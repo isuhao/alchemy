@@ -593,11 +593,13 @@ TRISTATE Null::isLess(ASObject* r)
 
 int32_t Null::getVariableByMultiname_i(const multiname& name)
 {
+    LOG(LOG_INFO, "Null::getVariableByMultiname_i: " << name);
 	throw Class<TypeError>::getInstanceS("Error #1009: null has no properties.");
 }
 
 _NR<ASObject> Null::getVariableByMultiname(const multiname& name, GET_VARIABLE_OPTION opt)
 {
+    LOG(LOG_INFO, "Null::getVariableByMultiname: " << name);
 	throw Class<TypeError>::getInstanceS("Error #1009: null has no properties.");
 }
 
@@ -759,12 +761,14 @@ ASObject* Class_base::coerce(ASObject* o) const
 		|| (class_name.name=="Class" && class_name.ns==""))
 		       return o; /* 'this' is the type of a class */
 	       else
-		       throw Class<TypeError>::getInstanceS("Error #1034: Wrong type");
+		       throw Class<TypeError>::getInstanceS("Error #1034: Wrong type: toplevel.cpp:762");
 	}
 	//o->getClass() == NULL for primitive types
 	//those are handled in overloads Class<Number>::coerce etc.
-	if(!o->getClass() || !o->getClass()->isSubClass(this))
-		throw Class<TypeError>::getInstanceS("Error #1034: Wrong type");
+	if(!o->getClass() || !o->getClass()->isSubClass(this)) {
+		//throw Class<TypeError>::getInstanceS("Error #1034: Wrong type: toplevel.cpp:767");
+		LOG(LOG_ERROR, "Error #1034: Wrong type: toplevel.cpp:767");
+    }
 	return o;
 }
 

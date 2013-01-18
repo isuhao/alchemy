@@ -18,6 +18,7 @@
 **************************************************************************/
 
 #include <map>
+#include "backends/security.h"
 #include "scripting/abc.h"
 #include "scripting/flash/net/flashnet.h"
 #include "scripting/flash/net/URLRequestHeader.h"
@@ -27,12 +28,13 @@
 #include "backends/audio.h"
 #include "backends/builtindecoder.h"
 #include "backends/rendering.h"
-#include "backends/security.h"
 #include "scripting/argconv.h"
 
 using namespace std;
 using namespace lightspark;
 
+static bool gotted=false;
+static bool userFastForward=false;
 URLRequest::URLRequest(Class_base* c):ASObject(c),method(GET),contentType("application/x-www-form-urlencoded"),
 	requestHeaders(Class<Array>::getInstanceS())
 {
@@ -865,11 +867,12 @@ ASFUNCTIONBODY(NetConnection,_getURI)
 ASFUNCTIONBODY_GETTER_SETTER(NetConnection, client);
 
 NetStream::NetStream(Class_base* c):EventDispatcher(c),tickStarted(false),paused(false),closed(true),
-	streamTime(0),frameRate(0),connection(),downloader(NULL),videoDecoder(NULL),
+	streamTime(0),streamDuration(0.0),frameRate(0),connection(),downloader(NULL),videoDecoder(NULL),
 	audioDecoder(NULL),audioStream(NULL),
 	client(NullRef),oldVolume(-1.0),checkPolicyFile(false),rawAccessAllowed(false)
 {
 	soundTransform = _MNR(Class<SoundTransform>::getInstanceS());
+    LOG(LOG_INFO, "NetStream::NetStream");
 }
 
 void NetStream::finalize()
@@ -991,6 +994,7 @@ ASFUNCTIONBODY(NetStream,_constructor)
 
 ASFUNCTIONBODY(NetStream,play)
 {
+    LOG(LOG_INFO, "NetStream.play");
 	NetStream* th=Class<NetStream>::cast(obj);
 
 	//Make sure the stream is restarted properly
@@ -1001,7 +1005,7 @@ ASFUNCTIONBODY(NetStream,play)
 
 	//Reset the paused states
 	th->paused = false;
-//	th->audioPaused = false;
+	//th->audioPaused = false;
 	assert(!th->connection.isNull());
 
 	if(th->connection->uri.getProtocol()=="http")
@@ -1022,9 +1026,23 @@ ASFUNCTIONBODY(NetStream,play)
 	{
 		//HTTP download
 		assert_and_throw(argslen>=1);
+        LOG(LOG_INFO, "NetStream.play: " << args[0]->toString());
 		//args[0] is the url
 		//what is the meaning of the other arguments
 		th->url = getSys()->mainClip->getOrigin().goToURL(args[0]->toString());
+
+        //liangtao01
+        pair<map<std::string,uint32_t>::iterator,bool> ret;
+        ret=getSys()->urlsDataStore.insert(pair<std::string,uint32_t>(th->url.getURL(),getSys()->segments++));
+        if(ret.second==false) {
+            LOG(LOG_INFO, "Segments: " << getSys()->segments);
+            map<std::string,uint32_t>::iterator it;
+            for(it=getSys()->urlsDataStore.begin();it!=getSys()->urlsDataStore.end();it++)
+                LOG(LOG_INFO, "Seg " << (*it).second << ": " << (*it).first);
+            LOG(LOG_INFO, "We have got all of the segments.");
+            gotted=true;
+            //assert_and_throw(false);
+        }
 
 		SecurityManager::EVALUATIONRESULT evaluationResult =
 			getSys()->securityManager->evaluateURLStatic(th->url, ~(SecurityManager::LOCAL_WITH_FILE),
@@ -1074,6 +1092,7 @@ void NetStream::jobFence()
 ASFUNCTIONBODY(NetStream,resume)
 {
 	NetStream* th=Class<NetStream>::cast(obj);
+    LOG(LOG_INFO, "NetStream.resume" << th->url);
 	if(th->paused)
 	{
 		th->paused = false;
@@ -1090,7 +1109,12 @@ ASFUNCTIONBODY(NetStream,resume)
 
 ASFUNCTIONBODY(NetStream,pause)
 {
-	NetStream* th=Class<NetStream>::cast(obj);
+    //if(userFastForward) {
+    //    return NULL;
+    //}
+
+    NetStream* th=Class<NetStream>::cast(obj);
+    LOG(LOG_INFO, "NetStream.pause" << th->url);
 	if(!th->paused)
 	{
 		th->paused = true;
@@ -1107,6 +1131,7 @@ ASFUNCTIONBODY(NetStream,pause)
 
 ASFUNCTIONBODY(NetStream,togglePause)
 {
+    LOG(LOG_INFO, "NetStream.togglePause");
 	NetStream* th=Class<NetStream>::cast(obj);
 	if(th->paused)
 		th->resume(obj, NULL, 0);
@@ -1116,7 +1141,8 @@ ASFUNCTIONBODY(NetStream,togglePause)
 }
 
 ASFUNCTIONBODY(NetStream,close)
-{
+{ 
+    LOG(LOG_INFO, "NetStream.close");
 	NetStream* th=Class<NetStream>::cast(obj);
 	//TODO: set the time property to 0
 	
@@ -1126,6 +1152,8 @@ ASFUNCTIONBODY(NetStream,close)
 		th->threadAbort();
 		th->incRef();
 		getVm()->addEvent(_MR(th), _MR(Class<NetStatusEvent>::getInstanceS("status", "NetStream.Play.Stop")));
+		//getVm()->addEvent(_MR(th), _MR(Class<NetStatusEvent>::getInstanceS("status", "NetStream.Buffer.Empty")));
+        LOG(LOG_INFO, "Everything is stopped: NetStream.Play.Stop");
 	}
 	LOG(LOG_CALLS, _("NetStream::close called"));
 	return NULL;
@@ -1133,6 +1161,11 @@ ASFUNCTIONBODY(NetStream,close)
 
 ASFUNCTIONBODY(NetStream,seek)
 {
+    //@liangtao01
+    NetStream* th=Class<NetStream>::cast(obj);
+    LOG(LOG_INFO, "NetStream.seek" << th->url);
+    //#liangtao01
+
 	//NetStream* th=Class<NetStream>::cast(obj);
 	assert_and_throw(argslen == 1);
 	return NULL;
@@ -1141,6 +1174,7 @@ ASFUNCTIONBODY(NetStream,seek)
 //Tick is called from the timer thread, this happens only if a decoder is available
 void NetStream::tick()
 {
+    LOG(LOG_INFO, "NetStream.tick enter");
 	//Check if the stream is paused
 	if(audioStream && audioStream->isValid())
 	{
@@ -1151,24 +1185,28 @@ void NetStream::tick()
 			oldVolume = soundTransform->volume;
 		}
 	}
-	if(paused)
+	if(paused) {
+        LOG(LOG_INFO, "NetStream.tick paused leave");
 		return;
+    }
 	//Advance video and audio to current time, follow the audio stream time
 	//No mutex needed, ticking can happen only when stream is completely ready
-	if(audioStream && getSys()->audioManager->isTimingAvailablePlugin())
-	{
-		assert(audioDecoder);
-		streamTime=audioStream->getPlayedTime()+audioDecoder->initialTime;
-	}
-	else
+	//if(audioStream && getSys()->audioManager->isTimingAvailablePlugin())
+	//{
+	//	assert(audioDecoder);
+	//	streamTime=audioStream->getPlayedTime()+audioDecoder->initialTime;
+	//}
+	//else
 	{
 		streamTime+=1000/frameRate;
-		audioDecoder->skipAll();
+        if(audioDecoder!=NULL)
+		    audioDecoder->skipAll(); //this code will cause lightspark hanging up.
 	}
 	videoDecoder->skipUntil(streamTime);
 	//The next line ensures that the downloader will not be destroyed before the upload jobs are fenced
 	videoDecoder->waitForFencing();
 	getSys()->getRenderThread()->addUploadJob(videoDecoder);
+    LOG(LOG_INFO, "NetStream.tick leave");
 }
 
 void NetStream::tickFence()
@@ -1177,11 +1215,16 @@ void NetStream::tickFence()
 
 bool NetStream::isReady() const
 {
-	if(videoDecoder==NULL || audioDecoder==NULL)
-		return false;
-
-	bool ret=videoDecoder->isValid() && audioDecoder->isValid();
-	return ret;
+    //Must have videoDecoder, but audioDecoder is optional (in
+    //case the video doesn't have audio)
+    return videoDecoder && videoDecoder->isValid() &&
+            (!audioDecoder || audioDecoder->isValid());
+//	if(videoDecoder==NULL || audioDecoder==NULL)
+//		return false;
+//
+//	bool ret=videoDecoder->isValid() && audioDecoder->isValid();
+//
+//	return ret;
 }
 
 bool NetStream::lockIfReady()
@@ -1200,6 +1243,16 @@ void NetStream::unlock()
 
 void NetStream::execute()
 {
+    LOG(LOG_INFO, "NetStream.execute: " << url);
+    char *envvar = getenv("LIGHTSPARK_FASTFORWARD");                                           
+    int fastforward = 0;
+    if (envvar)
+        fastforward=(int) min(1, max(0, atoi(envvar)));
+    if(fastforward>0) userFastForward=true;
+    //if(gotted) {
+    //    LOG(LOG_INFO, "NetStream.execute: gotted=true" << url);
+    //    return;
+    //}
 	//checkPolicyFile only applies to per-pixel access, loading and playing is always allowed.
 	//So there is no need to disallow playing if policy files disallow it.
 	//We do need to check if per-pixel access is allowed.
@@ -1218,12 +1271,15 @@ void NetStream::execute()
 	//The downloader hasn't failed yet at this point
 
 	istream s(downloader);
-	s.exceptions ( istream::eofbit | istream::failbit | istream::badbit );
+    //Disable exceptions on FFMpegStreamDecoder stream
+	//s.exceptions ( istream::eofbit | istream::failbit | istream::badbit );
+    s.exceptions(istream::goodbit);
 
 	ThreadProfile* profile=getSys()->allocateProfiler(RGB(0,0,200));
 	profile->setTag("NetStream");
 	bool waitForFlush=true;
 	StreamDecoder* streamDecoder=NULL;
+    bool first=true;
 	//We need to catch possible EOF and other error condition in the non reliable stream
 	try
 	{
@@ -1239,7 +1295,17 @@ void NetStream::execute()
 			//Check if threadAbort has been called, if so, stop this loop
 			if(closed)
 				done = true;
-			bool decodingSuccess=streamDecoder->decodeNextFrame();
+			bool decodingSuccess=false;
+            if(fastforward > 0) {
+                if(tickStarted && isReady()) {
+                    LOG(LOG_INFO, "isready" << url);
+                }
+                else 
+                    decodingSuccess=streamDecoder->decodeNextFrame();
+            } else {
+                decodingSuccess=streamDecoder->decodeNextFrame();
+            }
+
 			if(decodingSuccess==false)
 				done = true;
 
@@ -1252,6 +1318,7 @@ void NetStream::execute()
 				this->incRef();
 				getVm()->addEvent(_MR(this),
 						_MR(Class<NetStatusEvent>::getInstanceS("status", "NetStream.Buffer.Full")));
+                LOG(LOG_INFO, "NetStream.Buffer.Full || NetStream.Play.Start: " << url);
 			}
 
 			if(audioDecoder==NULL && streamDecoder->audioDecoder)
@@ -1263,6 +1330,7 @@ void NetStream::execute()
 			if(!tickStarted && isReady())
 			{
 				sendClientNotification("onMetaData", createMetaDataObject(streamDecoder));
+                LOG(LOG_INFO, "sendClientNotification onMetaData");
 
 				tickStarted=true;
 				if(frameRate==0)
@@ -1297,22 +1365,32 @@ void NetStream::execute()
 	}
 	if(waitForFlush)
 	{
+        LOG(LOG_INFO, "NetStream.Play.Stop || onPlayStatus: enter waitForFlush" << url);
 		//Put the decoders in the flushing state and wait for the complete consumption of contents
-		if(audioDecoder)
-			audioDecoder->setFlushing();
-		if(videoDecoder)
-			videoDecoder->setFlushing();
-		
-		if(audioDecoder)
-			audioDecoder->waitFlushed();
-		if(videoDecoder)
-			videoDecoder->waitFlushed();
+        //if(!userFastForward) {
+            if(audioDecoder)
+                audioDecoder->setFlushing();
+            if(videoDecoder)
+                videoDecoder->setFlushing();
 
+            if(audioDecoder)
+                audioDecoder->waitFlushed();
+            if(videoDecoder)
+                videoDecoder->waitFlushed();
+        //} else {
+        //    if(audioDecoder)
+        //        audioDecoder->skipAll();
+        //    if(videoDecoder)
+        //        videoDecoder->skipAll();
+        //}
+
+        LOG(LOG_INFO, "NetStream.Play.Stop || onPlayStatus: will send " << url);
 		this->incRef();
 		getVm()->addEvent(_MR(this), _MR(Class<NetStatusEvent>::getInstanceS("status", "NetStream.Play.Stop")));
 		this->incRef();
 		getVm()->addEvent(_MR(this), _MR(Class<NetStatusEvent>::getInstanceS("status", "NetStream.Buffer.Flush")));
 		sendClientNotification("onPlayStatus", createPlayStatusObject("NetStream.Play.Complete"));
+        LOG(LOG_INFO, "NetStream.Play.Stop || onPlayStatus: NetStream.Play.Complete: " << url);
 	}
 	//Before deleting stops ticking, removeJobs also spin waits for termination
 	getSys()->removeJob(this);
@@ -1358,6 +1436,7 @@ void NetStream::threadAbort()
 
 ASObject *NetStream::createMetaDataObject(StreamDecoder* streamDecoder)
 {
+    LOG(LOG_INFO, "NetStream.createMetaDataObject " << url);
 	if(!streamDecoder)
 		return NULL;
 
@@ -1374,8 +1453,11 @@ ASObject *NetStream::createMetaDataObject(StreamDecoder* streamDecoder)
 		metadata->setVariableByQName("height", "", abstract_d(getVideoHeight()),DYNAMIC_TRAIT);
 	if(streamDecoder->getMetadataDouble("framerate",d))
 		metadata->setVariableByQName("framerate", "",abstract_d(d),DYNAMIC_TRAIT);
-	if(streamDecoder->getMetadataDouble("duration",d))
+	if(streamDecoder->getMetadataDouble("duration",d)) {
 		metadata->setVariableByQName("duration", "",abstract_d(d),DYNAMIC_TRAIT);
+        LOG(LOG_INFO, "NetStream duration: " << d);
+        streamDuration=d;
+    }
 	if(streamDecoder->getMetadataInteger("canseekontime",i))
 		metadata->setVariableByQName("canSeekToEnd", "",abstract_b(i == 1),DYNAMIC_TRAIT);
 	if(streamDecoder->getMetadataDouble("audiodatarate",d))
@@ -1425,28 +1507,53 @@ void NetStream::sendClientNotification(const tiny_string& name, ASObject *arg)
 ASFUNCTIONBODY(NetStream,_getBytesLoaded)
 {
 	NetStream* th=Class<NetStream>::cast(obj);
-	if(th->isReady())
+	if(th->isReady()) {
+        if(userFastForward) {
+            LOG(LOG_INFO, "1489 NetStream._getBytesLoaded: " << th->getTotalLength() << " " << th);
+		    return abstract_i(th->getTotalLength());
+        }
+        LOG(LOG_INFO, "1503 NetStream._getBytesLoaded: " << th->getReceivedLength() << " " << th);
 		return abstract_i(th->getReceivedLength());
-	else
+    }
+	else {
+        LOG(LOG_INFO, "1507 NetStream._getBytesLoaded: 0");
 		return abstract_i(0);
+    }
 }
 
 ASFUNCTIONBODY(NetStream,_getBytesTotal)
 {
 	NetStream* th=Class<NetStream>::cast(obj);
-	if(th->isReady())
+	if(th->isReady()) {
+        LOG(LOG_INFO, "1520 NetStream._getBytesTotal: " << th->getTotalLength() << " " << th);
 		return abstract_i(th->getTotalLength());
-	else
+    }
+	else {
+        LOG(LOG_INFO, "1524 NetStream._getBytesTotal: 0");
 		return abstract_d(0);
+    }
 }
 
 ASFUNCTIONBODY(NetStream,_getTime)
 {
+    //return abstract_d(1);//liangtao01
 	NetStream* th=Class<NetStream>::cast(obj);
-	if(th->isReady())
+	if(th->isReady()) {
+	//if(true) {
+        if(userFastForward) {
+            LOG(LOG_INFO, "1519 NetStream._getTime: " << th->streamDuration << " " << th);
+            th->streamTime=(uint32_t)(th->streamDuration*1000);
+            return abstract_d(th->streamDuration);
+        }
+        LOG(LOG_INFO, "1539 NetStream._getTime: " << th->getStreamTime()/1000. << " " << th);
+        if(th->getStreamTime()/1000. > th->streamDuration) return abstract_d(th->streamDuration);
 		return abstract_d(th->getStreamTime()/1000.);
-	else
-		return abstract_d(0);
+    }
+	else {
+        LOG(LOG_INFO, "1544 NetStream._getTime: " << th->getStreamTime()/1000.);
+		//return abstract_d(0);
+        return abstract_d(th->getStreamTime()/1000.);
+    }
 }
 
 ASFUNCTIONBODY(NetStream,_getCurrentFPS)
@@ -1485,7 +1592,7 @@ const TextureChunk& NetStream::getTexture() const
 
 uint32_t NetStream::getStreamTime()
 {
-	assert(isReady());
+	//assert(isReady());
 	return streamTime;
 }
 
@@ -1732,7 +1839,10 @@ ASFUNCTIONBODY(lightspark,sendToURL)
 
 	vector<uint8_t> postData;
 	urlRequest->getPostData(postData);
-	assert_and_throw(postData.empty());
+	//assert_and_throw(postData.empty());
+    //if(postData.empty()) {
+    //    return NULL;
+    //}
 
 	//Don't cache our downloaded files
 	Downloader* downloader=getSys()->downloadManager->download(url, false, NULL);

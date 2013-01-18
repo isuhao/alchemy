@@ -618,7 +618,7 @@ uint32_t FFMpegAudioDecoder::decodePacket(AVPacket* pkt, uint32_t time)
 	if(ret==-1)
 	{
 		//A decoding error occurred, create an empty sample buffer
-		LOG(LOG_ERROR,_("Malformed audio packet"));
+		//LOG(LOG_ERROR,_("Malformed audio packet"));
 		curTail.len=0;
 		curTail.current=curTail.samples;
 		curTail.time=time;
@@ -648,7 +648,10 @@ StreamDecoder::~StreamDecoder()
 }
 
 #ifdef ENABLE_LIBAVCODEC
-FFMpegStreamDecoder::FFMpegStreamDecoder(std::istream& s):audioFound(false),videoFound(false),stream(s),formatCtx(NULL),avioContext(NULL)
+//FFMpegStreamDecoder::FFMpegStreamDecoder(std::istream& s):audioFound(false),videoFound(false),stream(s),formatCtx(NULL),avioContext(NULL)
+FFMpegStreamDecoder::FFMpegStreamDecoder(std::istream& s)
+    : audioFound(false),videoFound(false),stream(s),formatCtx(NULL),audioIndex(-1),
+      videoIndex(-1),customAudioDecoder(NULL),customVideoDecoder(NULL),avioContext(NULL)
 {
 	valid=false;
 #ifdef HAVE_AVIO_ALLOC_CONTEXT
@@ -709,7 +712,7 @@ FFMpegStreamDecoder::FFMpegStreamDecoder(std::istream& s):audioFound(false),vide
 			videoFound=true;
 			videoIndex=(int32_t)i;
 		}
-		else if(formatCtx->streams[i]->codec->codec_type==AVMEDIA_TYPE_AUDIO && audioFound==false)
+		else if(formatCtx->streams[i]->codec->codec_type==AVMEDIA_TYPE_AUDIO && formatCtx->streams[i]->codec->codec_id!=CODEC_ID_NONE && audioFound==false)
 		{
 			audioFound=true;
 			audioIndex=(int32_t)i;
@@ -766,7 +769,7 @@ bool FFMpegStreamDecoder::decodeNextFrame()
 	//Should use dts
 	uint32_t mtime=pkt.dts*1000*time_base.num/time_base.den;
 
-	if(pkt.stream_index==(int)audioIndex)
+	if(customAudioDecoder && pkt.stream_index==(int)audioIndex)
 		customAudioDecoder->decodePacket(&pkt, mtime);
 	else
 		customVideoDecoder->decodePacket(&pkt, mtime);

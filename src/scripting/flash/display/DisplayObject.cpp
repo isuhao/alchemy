@@ -634,9 +634,19 @@ ASFUNCTIONBODY(DisplayObject,_getLoaderInfo)
 	/* According to tests returning root.loaderInfo is the correct
 	 * behaviour, even though the documentation states that only
 	 * the main class should have non-null loaderInfo. */
+     //liangtao01
 	_NR<RootMovieClip> r=th->getRoot();
-	if(r.isNull() || r->loaderInfo.isNull())
+	if(r.isNull() || r->loaderInfo.isNull()) {
+#if 1
+        //@liangtao01
+        LOG(LOG_INFO, "lotushy: r.isNull() " << r.isNull() << " " << th);
+        _NR<RootMovieClip> x=getSys()->mainClip->getRoot();
+        x->loaderInfo->incRef();
+        return x->loaderInfo.getPtr();
+        //#liangtao01
+#endif
 		return getSys()->getUndefinedRef();
+    }
 	
 	r->loaderInfo->incRef();
 	return r->loaderInfo.getPtr();
@@ -727,6 +737,7 @@ ASFUNCTIONBODY(DisplayObject,_getName)
 
 void DisplayObject::setParent(_NR<DisplayObjectContainer> p)
 {
+    //LOG(LOG_INFO, "lotushy: DisplayObject::setParent " << this);
 	if(parent!=p)
 	{
 		parent=p;
@@ -1017,7 +1028,7 @@ void DisplayObject::computeMasksAndMatrix(DisplayObject* target, std::vector<IDr
 {
 	const DisplayObject* cur=this;
 	bool gatherMasks = true;
-	while(cur!=target)
+    while(cur && cur!=target) //Fix a segfault when the object is not on the stage
 	{
 		totalMatrix=cur->getMatrix().multiplyMatrix(totalMatrix);
 		//Get an IDrawable for all the hierarchy of each mask.

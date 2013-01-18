@@ -39,6 +39,9 @@
 using namespace std;
 using namespace lightspark;
 
+uint8_t* JPEGTablesTag::JPEGTables = NULL;
+int JPEGTablesTag::tableSize = 0;
+
 Tag* TagFactory::readTag(RootMovieClip* root)
 {
 	RECORDHEADER h;
@@ -401,7 +404,7 @@ ASObject* DefineSpriteTag::instance(Class_base* c) const
 	else
 		retClass=Class<MovieClip>::getClass();
 
-	return new (retClass->memoryAccount) MovieClip(retClass, *this);
+    return new (retClass->memoryAccount) MovieClip(retClass, *this, true);
 }
 
 void lightspark::ignore(istream& i, int count)
@@ -1058,11 +1061,14 @@ void PlaceObject2Tag::setProperties(DisplayObject* obj, DisplayObjectContainer* 
 
 void PlaceObject2Tag::execute(DisplayObjectContainer* parent) const
 {
+    if(PlaceFlagHasCharacter) {
+        LOG(LOG_INFO, "try to Placing ID " << CharacterId << " " << Name);
+    }
 	//TODO: support clipping
 	if(ClipDepth!=0)
 	{
 		LOG(LOG_ERROR,"ClipDepth is not supported");
-		return;
+		//return;
 	}
 
 	if(!PlaceFlagHasCharacter && !PlaceFlagMove)
@@ -1096,8 +1102,14 @@ void PlaceObject2Tag::execute(DisplayObjectContainer* parent) const
 				/* parent becomes the owner of toAdd */
 				parent->insertLegacyChildAt(Depth,toAdd);
 			}
-			else
-				LOG(LOG_ERROR,_("Invalid PlaceObject2Tag that overwrites an object without moving"));
+			else {
+                //@liangtao01
+				parent->deleteLegacyChildAt(Depth);
+				/* parent becomes the owner of toAdd */
+				parent->insertLegacyChildAt(Depth,toAdd);
+                //#liangtao01
+				LOG(LOG_ERROR,_("Invalid PlaceObject2Tag that overwrites an object without moving, but we still overwrite."));
+            }
 		}
 		else
 		{
@@ -1125,8 +1137,10 @@ PlaceObject2Tag::PlaceObject2Tag(RECORDHEADER h, std::istream& in, RootMovieClip
 	PlaceFlagHasCharacter=UB(1,bs);
 	PlaceFlagMove=UB(1,bs);
 	in >> Depth;
-	if(PlaceFlagHasCharacter)
+	if(PlaceFlagHasCharacter) {
 		in >> CharacterId;
+        LOG(LOG_INFO, "PlaceObject2Tag: CharacterId: " << CharacterId);
+    }
 
 	if(PlaceFlagHasMatrix)
 		in >> Matrix;
@@ -1137,8 +1151,10 @@ PlaceObject2Tag::PlaceObject2Tag(RECORDHEADER h, std::istream& in, RootMovieClip
 	if(PlaceFlagHasRatio)
 		in >> Ratio;
 
-	if(PlaceFlagHasName)
+	if(PlaceFlagHasName) {
 		in >> Name;
+        LOG(LOG_INFO, "PlaceObject2Tag: Name: " << Name);
+    }
 
 	if(PlaceFlagHasClipDepth)
 		in >> ClipDepth;
@@ -1481,6 +1497,29 @@ MetadataTag::MetadataTag(RECORDHEADER h, std::istream& in):Tag(h)
 	{
 		LOG(LOG_INFO, "SWF Metadata:" << XmlStringStd);
 	}
+}
+
+JPEGTablesTag::JPEGTablesTag(RECORDHEADER h, std::istream& in):Tag(h)
+{
+    if (JPEGTables == NULL)
+    {
+        tableSize=Header.getLength();
+        JPEGTables=new(nothrow) uint8_t[tableSize];
+        in.read((char*)JPEGTables, tableSize);
+    } else {
+        LOG(LOG_ERROR, "Malformed SWF file: duplicated JPEGTables tag");
+        skip(in);
+    }
+}
+
+const uint8_t* JPEGTablesTag::getJPEGTables()
+{
+    return JPEGTables;
+}
+
+int JPEGTablesTag::getJPEGTableSize()
+{
+    return tableSize;
 }
 
 DefineBitsTag::DefineBitsTag(RECORDHEADER h, std::istream& in,RootMovieClip* root):BitmapTag(h,root)

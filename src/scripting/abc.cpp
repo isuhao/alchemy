@@ -1139,6 +1139,7 @@ void ABCVm::handleEvent(std::pair<_NR<EventDispatcher>, _R<Event> > e)
 				LOG(LOG_CALLS,"ADVANCE_FRAME");
 				m_sys->mainClip->getStage()->advanceFrame();
 				ev->done.signal(); // Won't this signal twice, wrt to the signal() below?
+				LOG(LOG_CALLS,"ADVANCE_FRAME end");
 				break;
 			}
 			case FLUSH_INVALIDATION_QUEUE:

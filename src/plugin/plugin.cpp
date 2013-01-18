@@ -19,6 +19,7 @@
 **************************************************************************/
 
 #include "version.h"
+#include "backends/security.h"
 #include "plugin/plugin.h"
 #include "logger.h"
 #include "compat.h"
@@ -28,7 +29,6 @@
 #	include <gdk/gdkwin32.h>
 #endif
 #include "backends/urlutils.h"
-#include "backends/security.h"
 
 #include "plugin/npscriptobject.h"
 
@@ -221,8 +221,8 @@ NPError NS_PluginInitialize()
 	/* setup glib/gtk, this is already done on firefox/linux, but needs to be done
 	 * on firefox/windows (because there we statically link to gtk) */
 #ifdef HAVE_G_THREAD_INIT
-	if(!g_thread_supported())
-		g_thread_init(NULL);
+	//if(!g_thread_supported())
+	//	g_thread_init(NULL);
 #endif
 #ifdef _WIN32
 	//Calling gdk_threads_init multiple times (once by firefox, once by us)
@@ -585,6 +585,22 @@ NPError nsPluginInstance::NewStream(NPMIMEType type, NPStream* stream, NPBool se
 {
 	NPDownloader* dl=static_cast<NPDownloader*>(stream->notifyData);
 	LOG(LOG_INFO,_("Newstream for ") << stream->url);
+    std::string temp = stream->url;
+    if ((temp.find("googlesyndication") != std::string::npos)
+        || (temp.find("staticsdo") != std::string::npos)
+        || (temp.find("talker.swf") != std::string::npos)
+        || (temp.find("googlesyndication") != std::string::npos)
+        || (temp.find("MediaPlugin.swf") != std::string::npos)
+        || (temp.find("LivePassModuleMain.swf") != std::string::npos) //cntv
+        || (temp.find("livepass.conviva.com") != std::string::npos) //iqiyi
+        || (temp.find("material.mediav.com") != std::string::npos) //iqiyi
+        || (temp.find("drmcmm.baidu.com") != std::string::npos) //iqiyi
+        //|| (temp.find("TencentPlayerSkinV3") != std::string::npos)
+        //|| (temp.find("TencentPlayerOutSkinV3") != std::string::npos)
+        ) {
+        LOG(LOG_INFO, "Skip this");
+		return NPERR_GENERIC_ERROR;
+    }
 	setTLSSys( m_sys );
 	if(dl)
 	{

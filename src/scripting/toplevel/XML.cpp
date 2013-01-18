@@ -92,6 +92,7 @@ void XML::sinit(Class_base* c)
 	c->setDeclaredMethodByQName("setName",AS3,Class<IFunction>::getFunction(_setName),NORMAL_METHOD,true);
 	c->setDeclaredMethodByQName("setNamespace",AS3,Class<IFunction>::getFunction(_setNamespace),NORMAL_METHOD,true);
 	c->setDeclaredMethodByQName("copy",AS3,Class<IFunction>::getFunction(_copy),NORMAL_METHOD,true);
+    c->setDeclaredMethodByQName("setChildren",AS3,Class<IFunction>::getFunction(_setChildren),NORMAL_METHOD,true);
 }
 
 ASFUNCTIONBODY(XML,generator)
@@ -876,6 +877,43 @@ XML *XML::copy() const
 	return Class<XML>::getInstanceS(node);
 }
 
+ASFUNCTIONBODY(XML,_setChildren)
+{
+    XML* th=obj->as<XML>();
+    _NR<ASObject> newChildren;
+    ARG_UNPACK(newChildren);
+
+    th->removeAllChildren();
+
+    if (newChildren->is<XML>())
+    {
+        XML *newChildrenXML=newChildren->as<XML>();
+        th->node->import_node(newChildrenXML->node);
+    }
+    else if (newChildren->is<XMLList>())
+    {
+        XMLList *list=newChildren->as<XMLList>();
+        list->appendNodesTo(th);
+    }
+    else
+    {
+        LOG(LOG_NOT_IMPLEMENTED, "XML::setChildren supports only XMLs and XMLLists");
+    }
+
+    th->incRef();
+    return th;
+}
+
+void XML::removeAllChildren()
+{
+    xmlpp::Node::NodeList children=node->get_children();
+    xmlpp::Node::NodeList::const_iterator it=children.begin();
+    for(;it!=children.end();++it)
+    {
+        node->remove_child(*it);
+    }
+}
+
 bool XML::hasSimpleContent() const
 {
 	xmlElementType nodetype=node->cobj()->type;
@@ -915,7 +953,8 @@ void XML::recursiveGetDescendantsByQName(_R<XML> root, xmlpp::Node* node, const 
 		XMLVector& ret)
 {
 	//Check if this node is being requested. The "*" string means all
-	if(name=="*" || name == node->get_name())
+    //Empty string means all nodes
+	if(name=="" || name=="*" || name == node->get_name())
 		ret.push_back(_MR(Class<XML>::getInstanceS(root, node)));
 	//NOTE: Creating a temporary list is quite a large overhead, but there is no way in libxml++ to access the first child
 	const xmlpp::Node::NodeList& list=node->get_children();
@@ -967,7 +1006,7 @@ _NR<ASObject> XML::getVariableByMultiname(const multiname& name, GET_VARIABLE_OP
 	if(name.ns.size() > 0 && !name.ns[0].hasEmptyName())
 	{
 		nsNameAndKindImpl ns=name.ns[0].getImpl();
-		assert_and_throw(ns.kind==NAMESPACE);
+		//assert_and_throw(ns.kind==NAMESPACE);
 		namespace_uri=ns.name;
 	}
 
@@ -1087,7 +1126,16 @@ void XML::setVariableByMultiname(const multiname& name, ASObject* o, CONST_ALLOW
 			return;
 		}
 
-		xmlpp::Element* child=node->add_child(getSys()->getStringFromUniqueId(name.name_s_id), ns_prefix);
+        xmlpp::Element* child = NULL;
+        try
+        {
+            child=node->add_child(getSys()->getStringFromUniqueId(name.name_s_id), ns_prefix);
+        }
+        catch (xmlpp::exception& e)
+        {
+            LOG(LOG_NOT_IMPLEMENTED, "Adding child node failed: " << e.what());
+            return;
+        }
 
 		child->add_child_text(o->toString());
 
@@ -1233,6 +1281,15 @@ tiny_string XML::toString_priv()
 tiny_string XML::toString()
 {
 	return toString_priv();
+}
+
+int32_t XML::toInt()
+{
+    if (!hasSimpleContent())
+        return 0;
+
+    tiny_string str = toString();
+    return Integer::stringToASInteger(str.raw_buf(), 0);
 }
 
 bool XML::nodesEqual(xmlpp::Node *a, xmlpp::Node *b) const

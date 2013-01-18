@@ -130,6 +130,7 @@ typed_opcode_handler ABCVm::opcode_table_uint32_t[]={
 	{"getProperty_i",(void*)&ABCVm::getProperty_i,ARGS_OBJ_OBJ},
 	{"convert_i",(void*)&ABCVm::convert_i,ARGS_OBJ},
 	{"convert_u",(void*)&ABCVm::convert_u,ARGS_OBJ},
+    {"sxi8", (void*)&ABCVm::sxi8,ARGS_OBJ},
 };
 
 typed_opcode_handler ABCVm::opcode_table_number_t[]={

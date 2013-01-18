@@ -99,6 +99,14 @@ int32_t ABCVm::convert_i(ASObject* o)
 	return ret;
 }
 
+int32_t ABCVm::sxi8(ASObject* o)
+{
+    LOG(LOG_CALLS, _("sxi8"));
+	int32_t ret=o->toInt();
+	o->decRef();
+	return ret;
+}
+
 ASObject* ABCVm::convert_s(ASObject* o)
 {
 	LOG(LOG_CALLS, _("convert_s") );
@@ -282,8 +290,9 @@ int32_t ABCVm::bitOr(ASObject* val2, ASObject* val1)
 void ABCVm::callProperty(call_context* th, int n, int m, method_info** called_mi, bool keepReturn)
 {
 	ASObject** args=g_newa(ASObject*, m);
-	for(int i=0;i<m;i++)
+	for(int i=0;i<m;i++) {
 		args[m-i-1]=th->runtime_stack_pop();
+    }
 
 	multiname* name=th->context->getMultiname(n,th);
 	LOG(LOG_CALLS, (keepReturn ? "callProperty " : "callPropVoid") << *name << ' ' << m);
@@ -346,6 +355,7 @@ void ABCVm::callProperty(call_context* th, int n, int m, method_info** called_mi
 		}
 
 		LOG(LOG_NOT_IMPLEMENTED,"callProperty: " << name->normalizedName() << " not found on " << obj->toDebugString());
+
 		if(keepReturn)
 			th->runtime_stack_push(getSys()->getUndefinedRef());
 
@@ -377,6 +387,13 @@ ASObject* ABCVm::getProperty(ASObject* obj, multiname* name)
 	if(prop.isNull())
 	{
 		LOG(LOG_NOT_IMPLEMENTED,"getProperty: " << name->normalizedName() << " not found on " << obj->toDebugString());
+#if 0
+        //liangtao01
+        if (obj->is<Undefined>()) {
+		    LOG(LOG_NOT_IMPLEMENTED,"lotushy: getProperty: " << name->normalizedName() << " not found on " << obj->toDebugString());
+            throw Class<TypeError>::getInstanceS("Error #1010: A term is undefined and has no properties.");
+        }
+#endif
 		ret = getSys()->getUndefinedRef();
 	}
 	else

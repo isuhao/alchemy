@@ -533,6 +533,17 @@ public:
 	ASObject* instance(Class_base* c=NULL) const;
 };
 
+class JPEGTablesTag: public Tag
+{
+private:
+    static uint8_t* JPEGTables;
+    static int tableSize;
+public:
+    JPEGTablesTag(RECORDHEADER h, std::istream& in);
+    static const uint8_t* getJPEGTables();
+    static int getJPEGTableSize();
+};
+
 class DefineBitsLosslessTag: public BitmapTag
 {
 private:

@@ -211,7 +211,6 @@ private:
 	//We initialize this value to true, so we can check that play() hasn't been called without being closed first.
 	volatile bool closed;
 
-	uint32_t streamTime;
 	URLInfo url;
 	double frameRate;
 	//The NetConnection used by this NetStream
@@ -244,6 +243,8 @@ private:
 	ASObject *createPlayStatusObject(const tiny_string& code);
 	void sendClientNotification(const tiny_string& name, ASObject *args);
 public:
+	uint32_t streamTime;
+    double streamDuration;
 	NetStream(Class_base* c);
 	~NetStream();
 	void finalize();

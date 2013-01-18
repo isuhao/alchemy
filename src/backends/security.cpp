@@ -210,7 +210,14 @@ void SecurityManager::loadPolicyFile(std::multimap<tiny_string, T*>& pendingFile
 	if(pendingFiles.count(file->getURL().getHostname()) > 0)
 	{
 		LOG(LOG_INFO, _("SECURITY: Loading policy file (") << file->getURL() << ")");
+
+        // Policy files are downloaded in blocking manner,
+        // release the lock during loading
+        l.release();
+
 		file->load();
+
+        l.acquire();
 
 		std::pair< typename std::multimap<tiny_string, T*>::iterator, typename std::multimap<tiny_string, T*>::iterator > range;
 		range = pendingFiles.equal_range(file->getURL().getHostname());
@@ -570,6 +577,8 @@ SecurityManager::EVALUATIONRESULT SecurityManager::evaluatePortURL(const URLInfo
 SecurityManager::EVALUATIONRESULT SecurityManager::evaluatePoliciesURL(const URLInfo& url,
 		bool loadPendingPolicies)
 {
+    //liangtao01
+    return ALLOWED;
 	//This check doesn't apply to local files
 	if(url.getProtocol() == "file" && getSys()->mainClip->getOrigin().getProtocol() == "file")
 		return ALLOWED;
@@ -777,8 +786,8 @@ void PolicyFile::load()
 	//Invalid URLPolicyFile or already loaded, ignore this call
 	if(!isValid() || isLoaded())
 		return;
-	//We only try loading once, if something goes wrong, valid will be set to 'invalid'
-	loaded = true;
+	////We only try loading once, if something goes wrong, valid will be set to 'invalid'
+	//loaded = true;
 	
 	ignore = isIgnoredByMaster();
 
@@ -788,6 +797,16 @@ void PolicyFile::load()
 		valid = retrievePolicyFile(policy);
 
 	Mutex::Lock l(mutex);
+
+    if (isLoaded())
+    {
+        // Another thread already processed this PolicyFile
+        // while we were downloading
+        return;
+    }
+
+    //We only try loading once, if something goes wrong, valid will be set to 'invalid'
+    loaded = true;
 
 	//We've checked the master file to see of we need to ignore this file. (not the case)
 	//Now let's parse this file.

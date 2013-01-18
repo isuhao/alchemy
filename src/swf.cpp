@@ -19,6 +19,7 @@
 
 #include <string>
 #include <algorithm>
+#include "backends/security.h"
 #include "scripting/abc.h"
 #include "scripting/flash/events/flashevents.h"
 #include "scripting/flash/utils/flashutils.h"
@@ -31,7 +32,6 @@
 #include "backends/config.h"
 #include "backends/pluginmanager.h"
 #include "backends/rendering.h"
-#include "backends/security.h"
 #include "backends/image.h"
 #include "backends/extscriptobject.h"
 #include "memory_support.h"
@@ -185,6 +185,7 @@ SystemState::SystemState(uint32_t fileSize, FLASH_MODE mode):
 	showProfilingData(false),flashMode(mode),
 	currentVm(NULL),builtinClasses(NULL),useInterpreter(true),useFastInterpreter(false),useJit(false),exitOnError(ERROR_NONE),
 	downloadManager(NULL),extScriptObject(NULL),scaleMode(SHOW_ALL),unaccountedMemory(NULL),tagsMemory(NULL),stringMemory(NULL)
+    ,segments(0)
 {
 	//Forge the builtin strings
 	for(uint32_t i=0;i<LAST_BUILTIN_STRING;i++)
@@ -349,9 +350,15 @@ void SystemState::parseParametersFromFlashvars(const char* v)
 			/* That does occur in the wild */
 			if(params->hasPropertyByMultiname(QName(varName,""), true, true))
 				LOG(LOG_ERROR,"Flash parameters has duplicate key '" << varName << "' - ignoring");
-			else
+			else {
+                if(varName == "useP2pMode") {
+                    LOG(LOG_CALLS, "parseParametersFromFlashvars: " << varName << "--" << varValue);
+                    varValue="false";
+                }
+
 				params->setVariableByQName(varName,"",
 					lightspark::Class<lightspark::ASString>::getInstanceS(varValue),DYNAMIC_TRAIT);
+            }
 		}
 		cur=n2+1;
 	}
@@ -792,6 +799,8 @@ void SystemState::createEngines()
 
 void SystemState::launchGnash()
 {
+    LOG(LOG_INFO, "launchGnash");//liangtao01
+    return; //liangtao01
 	Locker l(rootMutex);
 	if(Config::getConfig()->getGnashPath().empty())
 	{
@@ -1535,7 +1544,7 @@ bool RootMovieClip::boundsRect(number_t& xmin, number_t& xmax, number_t& ymin, n
 void RootMovieClip::setFrameSize(const lightspark::RECT& f)
 {
 	frameSize=f;
-	assert_and_throw(f.Xmin==0 && f.Ymin==0);
+	//assert_and_throw(f.Xmin==0 && f.Ymin==0);
 }
 
 lightspark::RECT RootMovieClip::getFrameSize() const

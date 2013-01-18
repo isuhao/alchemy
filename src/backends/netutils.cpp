@@ -18,13 +18,13 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **************************************************************************/
 
+#include "backends/security.h"
 #include "scripting/abc.h"
 #include "swf.h"
 #include "backends/config.h"
 #include "backends/netutils.h"
 #include "backends/rtmputils.h"
 #include "compat.h"
-#include "backends/security.h"
 #include <string>
 #include <algorithm>
 #include <cctype>
@@ -1347,6 +1347,11 @@ bool DownloaderThreadBase::createDownloader(bool cached,
 			return false;
 		}
 	}
+
+    if(true) {
+        if(url.getURL().find("livepass.conviva.com") != tiny_string::npos)
+            return false;
+    }
 
 	if(threadAborting)
 		return false;

@@ -21,7 +21,7 @@
 #define PARSING_CROSSDOMAINPOLICY_H 1
 
 #include <libxml++/libxml++.h>
-#include <libxml++/parsers/textreader.h>
+//#include <libxml++/parsers/textreader.h>
 
 #include "compat.h"
 #include <string>

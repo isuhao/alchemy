@@ -27,13 +27,15 @@
 #include <set>
 
 enum LOG_LEVEL { LOG_ERROR=0, LOG_INFO=1, LOG_NOT_IMPLEMENTED=2,LOG_CALLS=3,LOG_TRACE=4};
+#include<time.h>
 
 #define LOG(level,esp)					\
 do {							\
 	if(level<=Log::getLevel())			\
 	{						\
 		Log l(level);				\
-		l() << esp << std::endl;		\
+        time_t cur=time((time_t*)NULL);  \
+		l() <<" " << cur <<  " ThreadID: " << pthread_self() << " " << esp << std::endl;		\
 	}						\
 } while(0)
 

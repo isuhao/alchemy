@@ -807,6 +807,13 @@ ASObject* ABCVm::executeFunction(const SyntheticFunction* function, call_context
 					PROF_IGNORE_TIME(profilingCheckpoint(startTime));
 				break;
 			}
+            case 0x51: //liangtao01
+            {
+                //sxi8
+                ASObject *val=context->runtime_stack_pop();
+                context->runtime_stack_push(abstract_i(sxi8(val)));
+                break;
+            }
 			case 0x53:
 			{
 				//constructgenerictype

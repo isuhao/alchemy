@@ -37,11 +37,12 @@ BitmapData::BitmapData(Class_base* c, const BitmapContainer& b):ASObject(c),Bitm
 
 BitmapData::BitmapData(Class_base* c, uint32_t width, uint32_t height):ASObject(c),BitmapContainer(c->memoryAccount),disposed(false)
 {
-	assert(width!=0 && height!=0);
-
-	uint32_t *pixels=new uint32_t[width*height];
-	memset(pixels,0,width*height*sizeof(uint32_t));
-	fromRGB(reinterpret_cast<uint8_t *>(pixels), width, height, true);
+    //Accept zero-sized bitmaps
+    if (width!=0 && height!=0) {
+        uint32_t *pixels=new uint32_t[width*height];
+        memset(pixels,0,width*height*sizeof(uint32_t));
+        fromRGB(reinterpret_cast<uint8_t *>(pixels), width, height, true);
+    }
 }
 
 BitmapData::~BitmapData()
@@ -178,7 +179,7 @@ ASFUNCTIONBODY(BitmapData,draw)
 					(clipRect, NullRef) (smoothing, false);
 
 	if(!drawable->getClass() || !drawable->getClass()->isSubClass(InterfaceClass<IBitmapDrawable>::getClass()) )
-		throw Class<TypeError>::getInstanceS("Error #1034: Wrong type");
+		throw Class<TypeError>::getInstanceS("Error #1034: Wrong type: BitmapData.cpp: 181");
 
 	if(!ctransform.isNull() || !blendMode.isNull() || !clipRect.isNull() || smoothing)
 		LOG(LOG_NOT_IMPLEMENTED,"BitmapData.draw does not support many parameters");
@@ -326,10 +327,10 @@ ASFUNCTIONBODY(BitmapData,fillRect)
 		rectH+=rectY;
 		rectY = 0;
 	}
-	if(rectW > th->width)
-		rectW = th->width;
-	if(rectH > th->height)
-		rectH = th->height;
+	if(rectX + rectW > th->width)
+		rectW = th->width - rectX;
+	if(rectY + rectH > th->height)
+		rectH = th->height - rectY;
 
 	for(int32_t i=0;i<rectH;i++)
 	{
@@ -431,7 +432,7 @@ ASFUNCTIONBODY(BitmapData,hitTest)
 					(secondAlphaThreshold,1);
 
 	if(!secondObject->getClass() || !secondObject->getClass()->isSubClass(Class<Point>::getClass()))
-		throw Class<TypeError>::getInstanceS("Error #1034: Wrong type");
+		throw Class<TypeError>::getInstanceS("Error #1034: Wrong type: BitmapData.cpp: 434");
 
 	if(!secondBitmapDataPoint.isNull() || secondAlphaThreshold!=1)
 		LOG(LOG_NOT_IMPLEMENTED,"BitmapData.hitTest does not expect some parameters");

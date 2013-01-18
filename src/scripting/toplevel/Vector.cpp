@@ -348,13 +348,16 @@ ASFUNCTIONBODY(Vector,push)
 	Vector* th=static_cast<Vector*>(obj);
 	if (th->fixed)
 		throw Class<RangeError>::getInstanceS("Error #1126");
+    //LOG(LOG_INFO, "lotushy: Vector.push:vec_type " << th->vec_type->getName());
 	for(size_t i = 0; i < argslen; ++i)
 	{
+        //LOG(LOG_INFO, "lotushy: Vector.push: " << args[i]->toString());
 		args[i]->incRef();
 		//The proprietary player violates the specification and allows elements of any type to be pushed;
 		//they are converted to the vec_type
 		th->vec.push_back( th->vec_type->coerce(args[i]) );
 	}
+    //LOG(LOG_INFO, "lotushy: Vector.push:end ");
 	return abstract_ui(th->vec.size());
 }
 

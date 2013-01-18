@@ -201,7 +201,7 @@ bool ASObject::isEqualStrict(ASObject* r)
 	return ABCVm::strictEqualImpl(this, r);
 }
 
-unsigned int ASObject::toUInt()
+uint32_t ASObject::toUInt()
 {
 	return toInt();
 }
@@ -212,7 +212,7 @@ uint16_t ASObject::toUInt16()
 	return val32 & 0xFFFF;
 }
 
-int ASObject::toInt()
+int32_t ASObject::toInt()
 {
 	return 0;
 }
@@ -630,15 +630,17 @@ variable::variable(TRAIT_KIND _k, ASObject* _v, multiname* _t, const Type* _type
 void variable::setVar(ASObject* v)
 {
 	//Resolve the typename if we have one
-	if(!(traitState&TYPE_RESOLVED) && traitTypemname)
+    //currentCallContext may be NULL when inserting legacy
+    //children, which is done outisde any ABC context
+    //BugFix: currentCallContext is NULL when inserting legacy children
+	if(!(traitState&TYPE_RESOLVED) && traitTypemname && getVm()->currentCallContext)
 	{
 		type = Type::getTypeFromMultiname(traitTypemname, getVm()->currentCallContext->context);
 		assert(type);
-		if(type)
-			traitState=TYPE_RESOLVED;
+	    traitState=TYPE_RESOLVED;
 	}
 
-	if(type)
+	if((traitState&TYPE_RESOLVED) && type)
 		v = type->coerce(v);
 
 	if(var)
@@ -956,6 +958,15 @@ _NR<ASObject> ASObject::getVariableByMultiname(const multiname& name, GET_VARIAB
 	assert(!cls || classdef->isSubClass(cls));
 	const variable* obj=findVariableByMultiname(name, opt, cls);
 
+    //renderTime: sohu
+    //getHashCash: youku
+    if(name.normalizedName() == "getHashCash"
+        || name.normalizedName() == "renderTime"
+        ) {
+        LOG(LOG_CALLS, "Try to call " << name.normalizedName() << "! Just return NUllRef!");
+        return NullRef;
+    }
+
 	if(!obj)
 		return NullRef;
 
@@ -982,6 +993,11 @@ _NR<ASObject> ASObject::getVariableByMultiname(const multiname& name, GET_VARIAB
 	{
 		assert_and_throw(!obj->setter);
 		assert_and_throw(obj->var);
+        if(obj->var->is<Null>()) {
+            LOG(LOG_INFO, "ASObject::getVariableByMultiname isNull." << name);
+            //return NullRef;
+        }
+
 		if(obj->var->getObjectType()==T_FUNCTION && obj->var->as<IFunction>()->isMethod())
 		{
 			LOG(LOG_CALLS,"Attaching this " << this << " to function " << name);

@@ -364,6 +364,7 @@ private:
 	static void label();
 	static void lookupswitch();
 	static int32_t convert_i(ASObject*);
+    static int32_t sxi8(ASObject* o);
 	static uint32_t convert_u(ASObject*);
 	static number_t convert_d(ASObject*);
 	static ASObject* convert_s(ASObject*);

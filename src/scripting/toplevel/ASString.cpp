@@ -94,6 +94,10 @@ void ASString::sinit(Class_base* c)
 	c->setDeclaredMethodByQName("toLowerCase",AS3,Class<IFunction>::getFunction(toLowerCase),NORMAL_METHOD,true);
 	c->setDeclaredMethodByQName("toUpperCase",AS3,Class<IFunction>::getFunction(toUpperCase),NORMAL_METHOD,true);
 	c->setDeclaredMethodByQName("fromCharCode",AS3,Class<IFunction>::getFunction(fromCharCode),NORMAL_METHOD,false);
+    // According to specs fromCharCode belongs to AS3 namespace,
+    // but also empty namespace is seen in the wild and should be
+    // supported.
+    c->setDeclaredMethodByQName("fromCharCode","",Class<IFunction>::getFunction(fromCharCode),NORMAL_METHOD,false);
 	c->setDeclaredMethodByQName("length","",Class<IFunction>::getFunction(_getLength),GETTER_METHOD,true);
 	c->setDeclaredMethodByQName("toString",AS3,Class<IFunction>::getFunction(_toString),NORMAL_METHOD,true);
 	c->setDeclaredMethodByQName("valueOf",AS3,Class<IFunction>::getFunction(_toString),NORMAL_METHOD,true);
@@ -484,14 +488,7 @@ double ASString::toNumber() const
 int32_t ASString::toInt()
 {
 	assert_and_throw(implEnable);
-	const char* cur=data.raw_buf();
-	int64_t ret;
-	bool valid=Integer::fromStringFlashCompatible(cur,ret,0);
-
-	if(valid==false || ret<INT32_MIN || ret>INT32_MAX)
-		return 0;
-	else
-		return static_cast<int32_t>(ret);
+    return Integer::stringToASInteger(data.raw_buf(), 0);
 }
 
 uint32_t ASString::toUInt()
@@ -607,15 +604,20 @@ ASFUNCTIONBODY(ASString,charCodeAt)
 
 ASFUNCTIONBODY(ASString,indexOf)
 {
+    LOG(LOG_CALLS, "ASString.indexof");
 	if (argslen == 0)
 		return abstract_i(-1);
 	tiny_string data = obj->toString();
 	tiny_string arg0=args[0]->toString();
 	int startIndex=0;
-	if(argslen>1)
+	if(argslen>1) {
 		startIndex=args[1]->toInt();
+    }
+    startIndex = imin(imax(startIndex, 0), data.numChars());
 
+    LOG(LOG_CALLS, "ASString.indexof: " << data << ": " << args[0]->toString() << ": " << startIndex);
 	size_t pos = data.find(arg0.raw_buf(), startIndex);
+    LOG(LOG_CALLS, "ASString.indexof: 618: " << args[0]->toString() << "--" << startIndex);
 	if(pos == data.npos)
 		return abstract_i(-1);
 	else
@@ -635,6 +637,8 @@ ASFUNCTIONBODY(ASString,lastIndexOf)
 			return abstract_i(-1);
 		startIndex = i;
 	}
+
+    startIndex = imin(imax(startIndex, 0), data.numChars());
 
 	size_t pos=data.rfind(val.raw_buf(), startIndex);
 	if(pos==data.npos)
@@ -668,6 +672,7 @@ ASFUNCTIONBODY(ASString,fromCharCode)
 ASFUNCTIONBODY(ASString,replace)
 {
 	tiny_string data = obj->toString();
+    LOG(LOG_CALLS, "lotushy: replace: " << data);
 	enum REPLACE_TYPE { STRING=0, FUNC };
 	REPLACE_TYPE type;
 	ASString* ret=Class<ASString>::getInstanceS(data);
@@ -691,6 +696,7 @@ ASFUNCTIONBODY(ASString,replace)
 	if(args[0]->getClass()==Class<RegExp>::getClass())
 	{
 		RegExp* re=static_cast<RegExp*>(args[0]);
+        LOG(LOG_CALLS, "lotushy: replace: RegExp: " << re->toString() << ": " << re->source);
 
 		pcre* pcreRE = re->compile();
 		if (!pcreRE)
@@ -710,10 +716,14 @@ ASFUNCTIONBODY(ASString,replace)
 		int offset=0;
 		int retDiff=0;
 		tiny_string prevsubstring = "";
+        LOG(LOG_CALLS, "lotushy: replace begin");
 		do
 		{
+            LOG(LOG_CALLS, "lotushy: replace do-while");
 			tiny_string replaceWithTmp = replaceWith;
 			int rc=pcre_exec(pcreRE, &extra, ret->data.raw_buf(), ret->data.numBytes(), offset, 0, ovector, (capturingGroups+1)*3);
+            LOG(LOG_CALLS, "lotushy: replace : rc: " << rc << "--offset: " << offset << "--ovector[0]: " << ovector[0] << ": " << ovector[1]);
+			//if(rc<0 || ovector[1] - ovector[0] == 0)
 			if(rc<0)
 			{
 				//No matches or error
@@ -737,10 +747,12 @@ ASFUNCTIONBODY(ASString,replace)
 				replaceWithTmp=ret->toString().raw_buf();
 				ret->decRef();
 			} else {
+                    LOG(LOG_CALLS, "lotushy: replace do-while 743");
 					size_t pos, ipos = 0;
 					tiny_string group;
 					int i, j;
 					while((pos = replaceWithTmp.find("$", ipos)) != tiny_string::npos) {
+                        LOG(LOG_CALLS, "lotushy: replace do-while 748");
 						i = 0;
 						ipos = pos;
 						/* docu is not clear what to do if the $nn value is higher 
@@ -750,6 +762,7 @@ ASFUNCTIONBODY(ASString,replace)
 						 */
 						   
 						while (++ipos < replaceWithTmp.numChars() && i<10) {
+                        LOG(LOG_CALLS, "lotushy: replace do-while 758");
 						j = replaceWithTmp.charAt(ipos)-'0';
 							if (j <0 || j> 9 || rc < 10*i + j)
 								break;
@@ -781,11 +794,14 @@ ASFUNCTIONBODY(ASString,replace)
 			prevsubstring += ret->data.substr_bytes(ovector[0],ovector[1]-ovector[0]);
 			ret->data.replace_bytes(ovector[0],ovector[1]-ovector[0],replaceWithTmp);
 			offset=ovector[0]+replaceWithTmp.numBytes();
+            if (ovector[0] == ovector[1])
+                offset+=1;
 			retDiff+=replaceWithTmp.numBytes()-(ovector[1]-ovector[0]);
 		}
 		while(re->global);
 
 		pcre_free(pcreRE);
+        LOG(LOG_CALLS, "lotushy: replace end");
 	}
 	else
 	{

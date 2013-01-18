@@ -213,6 +213,7 @@ private:
 	*/
 	std::string rawParameters;
 
+
 	//Cookies for Gnash fallback
 	std::string rawCookies;
 	char* cookiesFileName;
@@ -324,6 +325,13 @@ public:
 	Class_base** builtinClasses;
 	std::map<QName, Template_base*> templates;
 	std::map<QName, Class_base*> instantiatedTemplates;
+
+    //liangtao01
+    /*
+        Used to keep a copy of video [segments] url [urls]
+    */
+    std::map<std::string,uint32_t> urlsDataStore;
+    uint32_t segments;
 
 	//Flags for command line options
 	bool useInterpreter;

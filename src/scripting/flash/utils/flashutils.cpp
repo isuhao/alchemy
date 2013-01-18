@@ -1326,9 +1326,16 @@ ASFUNCTIONBODY(Timer,_constructor)
 	EventDispatcher::_constructor(obj,NULL,0);
 	Timer* th=static_cast<Timer*>(obj);
 
+    char *envvar=getenv("LIGHTSPARK_ENABLETIMER");
+    th->_enableTimer=0;
+    if (envvar)
+        th->_enableTimer=(int) min(1, max(0, atoi(envvar)));
+
 	th->delay=args[0]->toInt();
-	if(argslen>=2)
+	if(argslen>=2) {
 		th->repeatCount=args[1]->toInt();
+    }
+    LOG(LOG_INFO, "Timer Delay: " << th->delay << " repeatCount: " << th->repeatCount);
 
 	return NULL;
 }
@@ -1388,6 +1395,10 @@ ASFUNCTIONBODY(Timer,_setDelay)
 ASFUNCTIONBODY(Timer,start)
 {
 	Timer* th=static_cast<Timer*>(obj);
+
+    if(!!th->_enableTimer)
+        return NULL;
+
 	if(th->running)
 		return NULL;
 	th->running=true;
@@ -1404,6 +1415,10 @@ ASFUNCTIONBODY(Timer,start)
 ASFUNCTIONBODY(Timer,reset)
 {
 	Timer* th=static_cast<Timer*>(obj);
+
+    if(!!th->_enableTimer)
+        return NULL;
+
 	if(th->running)
 	{
 		//This spin waits if the timer is running right now
@@ -1421,6 +1436,10 @@ ASFUNCTIONBODY(Timer,reset)
 ASFUNCTIONBODY(Timer,stop)
 {
 	Timer* th=static_cast<Timer*>(obj);
+
+    if(!!th->_enableTimer)
+        return NULL;
+
 	if(th->running)
 	{
 		//This spin waits if the timer is running right now
@@ -1472,6 +1491,7 @@ ASFUNCTIONBODY(lightspark,getQualifiedSuperclassName)
 
 	assert_and_throw(c);
 
+    LOG(LOG_INFO, "lotushy: " << c->getQualifiedClassName());
 	return Class<ASString>::getInstanceS(c->getQualifiedClassName());
 }
 
@@ -1945,6 +1965,9 @@ _R<ASObject> Proxy::nextValue(uint32_t index)
 
 ASFUNCTIONBODY(lightspark,setInterval)
 {
+    char* notimeout = getenv("NO_TIMEOUT");
+    if(notimeout!=NULL)
+        return abstract_i(0);
 	assert_and_throw(argslen >= 2 && args[0]->getObjectType()==T_FUNCTION);
 
 	//Build arguments array
@@ -1968,6 +1991,9 @@ ASFUNCTIONBODY(lightspark,setInterval)
 
 ASFUNCTIONBODY(lightspark,setTimeout)
 {
+    char* notimeout = getenv("NO_TIMEOUT");
+    if(notimeout!=NULL)
+	    return abstract_i(0);
 	assert_and_throw(argslen >= 2);
 
 	//Build arguments array
@@ -1991,6 +2017,9 @@ ASFUNCTIONBODY(lightspark,setTimeout)
 
 ASFUNCTIONBODY(lightspark,clearInterval)
 {
+    char* notimeout = getenv("NO_TIMEOUT");
+    if(notimeout!=NULL)
+        return NULL;
 	assert_and_throw(argslen == 1);
 	getSys()->intervalManager->clearInterval(args[0]->toInt(), IntervalRunner::INTERVAL, true);
 	return NULL;
@@ -1998,6 +2027,9 @@ ASFUNCTIONBODY(lightspark,clearInterval)
 
 ASFUNCTIONBODY(lightspark,clearTimeout)
 {
+    char* notimeout = getenv("NO_TIMEOUT");
+    if(notimeout!=NULL)
+        return abstract_i(0);
 	assert_and_throw(argslen == 1);
 	getSys()->intervalManager->clearInterval(args[0]->toInt(), IntervalRunner::TIMEOUT, true);
 	return NULL;

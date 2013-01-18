@@ -71,7 +71,7 @@ ASObject* Class_inherit::getInstance(bool construct, ASObject* const* args, cons
 		realClass=this;
 
 	ASObject* ret=NULL;
-	assert_and_throw(!bindedToRoot);
+	//assert_and_throw(!bindedToRoot);
 	if(tag)
 	{
 		ret=tag->instance(realClass);

@@ -208,6 +208,7 @@ public:
 	ASFUNCTION(curveTo);
 	ASFUNCTION(cubicCurveTo);
 	ASFUNCTION(clear);
+    ASFUNCTION(copyFrom);
 };
 
 
@@ -239,6 +240,7 @@ class MorphShape: public DisplayObject
 protected:
 	bool boundsRect(number_t& xmin, number_t& xmax, number_t& ymin, number_t& ymax) const;
 	virtual _NR<InteractiveObject> hitTestImpl(_NR<InteractiveObject> last, number_t x, number_t y, HIT_TYPE type);
+    virtual void renderImpl(RenderContext& ctxt) const {} //Trivial renderImpl fixes an exception in the renderer
 public:
 	MorphShape(Class_base* c):DisplayObject(c){}
 	static void sinit(Class_base* c);
@@ -480,6 +482,7 @@ friend class ParserThread;
 private:
 	uint32_t getCurrentScene();
 	std::map<uint32_t,_NR<IFunction> > frameScripts;
+    bool fromDefineSpriteTag;
 protected:
 	/* This is read from the SWF header. It's only purpose is for flash.display.MovieClip.totalFrames */
 	uint32_t totalFrames_unreliable;
@@ -487,7 +490,7 @@ protected:
 public:
 	RunState state;
 	MovieClip(Class_base* c);
-	MovieClip(Class_base* c, const FrameContainer& f);
+    MovieClip(Class_base* c, const FrameContainer& f, bool defineSpriteTag);
 	void finalize();
 	ASObject* gotoAnd(ASObject* const* args, const unsigned int argslen, bool stop);
 	static void sinit(Class_base* c);
@@ -502,6 +505,7 @@ public:
 	ASFUNCTION(swapDepths);
 	ASFUNCTION(addFrameScript);
 	ASFUNCTION(stop);
+    ASFUNCTION(play); //MovieClip.play supported
 	ASFUNCTION(gotoAndStop);
 	ASFUNCTION(gotoAndPlay);
 	ASFUNCTION(nextFrame);

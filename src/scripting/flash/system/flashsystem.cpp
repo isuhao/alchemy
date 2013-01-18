@@ -229,6 +229,13 @@ ASFUNCTIONBODY(ApplicationDomain,getDefinition)
 	LOG(LOG_CALLS,_("Looking for definition of ") << name);
 	ASObject* target;
 	ASObject* o=th->getVariableAndTargetByMultiname(name,target);
+#if 1
+    //liangtao01
+    if(o == NULL) {
+        throw Class<TypeError>::getInstanceS("lotushy: Error #1010 undefined");
+    }
+    //#liangtao01
+#endif
 	assert_and_throw(o);
 
 	//TODO: specs says that also namespaces and function may be returned

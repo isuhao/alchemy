@@ -19,6 +19,7 @@
 
 #include <list>
 
+#include "backends/security.h"
 #include "scripting/abc.h"
 #include "scripting/flash/display/flashdisplay.h"
 #include "swf.h"
@@ -33,7 +34,6 @@
 #include "scripting/flash/display/BitmapData.h"
 #include "scripting/argconv.h"
 #include "scripting/toplevel/Vector.h"
-#include "backends/security.h"
 
 using namespace std;
 using namespace lightspark;
@@ -241,6 +241,7 @@ ASFUNCTIONBODY(LoaderInfo,_getBytesTotal)
 
 ASFUNCTIONBODY(LoaderInfo,_getApplicationDomain)
 {
+    LOG(LOG_INFO, "lotushy:_getApplicationDomain");
 	LoaderInfo* th=static_cast<LoaderInfo*>(obj);
 	if(th->applicationDomain.isNull())
 		return getSys()->getNullRef();
@@ -601,7 +602,7 @@ ASFUNCTIONBODY(Sprite,_startDrag)
 	{
 		Rectangle* rect = Class<Rectangle>::cast(args[1]);
 		if(!rect)
-			throw Class<ArgumentError>::getInstanceS("Wrong type");
+			throw Class<ArgumentError>::getInstanceS("Wrong type: flashdisplay.cpp:605");
 		bounds = new RECT(rect->getRect());
 	}
 
@@ -819,6 +820,7 @@ ASFUNCTIONBODY(FrameLabel,_getName)
  */
 void Scene_data::addFrameLabel(uint32_t frame, const tiny_string& label)
 {
+    LOG(LOG_INFO, "lotushy: addFrameLabel: " << label << "==" << frame << "==" << this);
 	for(vector<FrameLabel_data>::iterator j=labels.begin();
 		j != labels.end();++j)
 	{
@@ -952,6 +954,7 @@ void MovieClip::sinit(Class_base* c)
 	c->setDeclaredMethodByQName("scenes","",Class<IFunction>::getFunction(_getScenes),GETTER_METHOD,true);
 	c->setDeclaredMethodByQName("currentScene","",Class<IFunction>::getFunction(_getCurrentScene),GETTER_METHOD,true);
 	c->setDeclaredMethodByQName("stop","",Class<IFunction>::getFunction(stop),NORMAL_METHOD,true);
+    c->setDeclaredMethodByQName("play","",Class<IFunction>::getFunction(play),NORMAL_METHOD,true);
 	c->setDeclaredMethodByQName("gotoAndStop","",Class<IFunction>::getFunction(gotoAndStop),NORMAL_METHOD,true);
 	c->setDeclaredMethodByQName("gotoAndPlay","",Class<IFunction>::getFunction(gotoAndPlay),NORMAL_METHOD,true);
 	c->setDeclaredMethodByQName("nextFrame","",Class<IFunction>::getFunction(nextFrame),NORMAL_METHOD,true);
@@ -962,11 +965,11 @@ void MovieClip::buildTraits(ASObject* o)
 {
 }
 
-MovieClip::MovieClip(Class_base* c):Sprite(c),totalFrames_unreliable(1)
+MovieClip::MovieClip(Class_base* c):Sprite(c),fromDefineSpriteTag(false),totalFrames_unreliable(1)
 {
 }
 
-MovieClip::MovieClip(Class_base* c, const FrameContainer& f):Sprite(c),FrameContainer(f),totalFrames_unreliable(frames.size())
+MovieClip::MovieClip(Class_base* c, const FrameContainer& f, bool defineSpriteTag):Sprite(c),FrameContainer(f),fromDefineSpriteTag(defineSpriteTag),totalFrames_unreliable(frames.size())
 {
 	//For sprites totalFrames_unreliable is the actual frame count
 	//For the root movie, it's the frame count from the header
@@ -979,13 +982,17 @@ void MovieClip::finalize()
 	frameScripts.clear();
 }
 
-uint32_t MovieClip::getFrameIdByLabel(const tiny_string& l) const
+uint32_t MovieClip::getFrameIdByLabel(const tiny_string& label) const
 {
+    LOG(LOG_INFO, "lotushy: getFrameIdByLabel: " << label << "==" << this << " scenes size: " << scenes.size());
 	for(size_t i=0;i<scenes.size();++i)
 	{
-		for(size_t j=0;j<scenes[i].labels.size();++j)
-			if(scenes[i].labels[j].name == l)
+        LOG(LOG_INFO, "lotushy: labels size: " << scenes[i].labels.size());
+		for(size_t j=0;j<scenes[i].labels.size();++j) {
+            LOG(LOG_INFO, "lotushy: getFrameIdByLabel: " << scenes[i].labels[j].name);
+			if(scenes[i].labels[j].name == label)
 				return scenes[i].labels[j].frame;
+        }
 	}
 	return 0xffffffff;
 }
@@ -1022,7 +1029,16 @@ ASFUNCTIONBODY(MovieClip,stop)
 {
 	MovieClip* th=static_cast<MovieClip*>(obj);
 	th->state.stop_FP=true;
+    th->state.next_FP=th->state.FP;//When stop() is called, stay at the current frame
 	return NULL;
+}
+
+//MovieClip.play supported
+ASFUNCTIONBODY(MovieClip,play)
+{
+    MovieClip* th=static_cast<MovieClip*>(obj);
+    th->state.stop_FP=false;
+    return NULL;
 }
 
 ASObject* MovieClip::gotoAnd(ASObject* const* args, const unsigned int argslen, bool stop)
@@ -1036,9 +1052,13 @@ ASObject* MovieClip::gotoAnd(ASObject* const* args, const unsigned int argslen, 
 	}
 	if(args[0]->getObjectType()==T_STRING)
 	{
+        LOG(LOG_INFO, "lotushy: gotoAndPlay/Stop: frame label: " << args[0]->toString() << "==" << this);
 		uint32_t dest=getFrameIdByLabel(args[0]->toString());
-		if(dest==0xffffffff)
-			throw Class<ArgumentError>::getInstanceS("gotoAndPlay/Stop: label not found");
+		if(dest==0xffffffff) {
+            LOG(LOG_INFO, "lotushy: gotoAndPlay/Stop: frame label not found, goto the first frame: " << args[0]->toString() << "==" << this);
+			//throw Class<ArgumentError>::getInstanceS("gotoAndPlay/Stop: label not found");
+		    dest = 1;
+        }
 
 		next_FP = dest;
 	}
@@ -1581,6 +1601,11 @@ ASFUNCTIONBODY(DisplayObjectContainer,addChild)
 		return getSys()->getNullRef();
 	}
 	//Validate object type
+	if(!(args[0] && args[0]->getClass() && 
+		args[0]->getClass()->isSubClass(Class<DisplayObject>::getClass()))) {
+        LOG(LOG_CALLS, "couldn't addChild " << args[0]->toString());
+		return getSys()->getNullRef();
+    }
 	assert_and_throw(args[0] && args[0]->getClass() && 
 		args[0]->getClass()->isSubClass(Class<DisplayObject>::getClass()));
 
@@ -1692,6 +1717,13 @@ ASFUNCTIONBODY(DisplayObjectContainer,swapChildren)
 		args[0]->getClass()->isSubClass(Class<DisplayObject>::getClass()));
 	assert_and_throw(args[1] && args[1]->getClass() && 
 		args[1]->getClass()->isSubClass(Class<DisplayObject>::getClass()));
+
+    if (args[0] == args[1])
+    {
+        // Must return, otherwise crashes trying to erase the
+        // same object twice
+        return NULL;
+    }
 
 	//Cast to object
 	args[0]->incRef();
@@ -1998,6 +2030,7 @@ void Graphics::sinit(Class_base* c)
 {
 	c->setConstructor(Class<IFunction>::getFunction(_constructor));
 	c->setDeclaredMethodByQName("clear","",Class<IFunction>::getFunction(clear),NORMAL_METHOD,true);
+    c->setDeclaredMethodByQName("copyFrom","",Class<IFunction>::getFunction(copyFrom),NORMAL_METHOD,true);
 	c->setDeclaredMethodByQName("drawRect","",Class<IFunction>::getFunction(drawRect),NORMAL_METHOD,true);
 	c->setDeclaredMethodByQName("drawRoundRect","",Class<IFunction>::getFunction(drawRoundRect),NORMAL_METHOD,true);
 	c->setDeclaredMethodByQName("drawCircle","",Class<IFunction>::getFunction(drawCircle),NORMAL_METHOD,true);
@@ -2029,6 +2062,19 @@ ASFUNCTIONBODY(Graphics,clear)
 	th->owner->tokens.clear();
 	th->owner->owner->requestInvalidation(getSys());
 	return NULL;
+}
+
+ASFUNCTIONBODY(Graphics,copyFrom)
+{
+    Graphics* th=static_cast<Graphics*>(obj);
+    _NR<Graphics> source;
+    ARG_UNPACK(source);
+    if (source.isNull())
+        return NULL;
+
+    th->owner->tokens.assign(source->owner->tokens.begin(),
+            source->owner->tokens.end());
+    return NULL;
 }
 
 ASFUNCTIONBODY(Graphics,moveTo)
@@ -3112,8 +3158,9 @@ void MovieClip::initFrame()
 	 * before state.FP (which may get us an segfault).
 	 *
 	 */
-	if((int)state.FP < state.last_FP)
-		purgeLegacyChildren();
+     //liangtao01 just delete
+	//if((int)state.FP < state.last_FP)
+	//	purgeLegacyChildren();
 
 	if(getFramesLoaded())
 	{
@@ -3178,7 +3225,7 @@ void MovieClip::advanceFrame()
 	 * 1b. or it is a DefineSpriteTag
 	 * 2. and is exported as a subclass of MovieClip (see bindedTo)
 	 */
-	if((!dynamic_cast<RootMovieClip*>(this) && !dynamic_cast<DefineSpriteTag*>(this))
+	if((!dynamic_cast<RootMovieClip*>(this) && !fromDefineSpriteTag)
 		|| !getClass()->isSubClass(Class<MovieClip>::getClass()))
 		return;
 
